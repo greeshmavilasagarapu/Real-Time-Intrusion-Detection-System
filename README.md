@@ -24,8 +24,12 @@ Data Sources          Detection Modules        Explainability        Dashboard
 - **Explainable AI** — SHAP values for network predictions and LIME explanations for log anomalies
 - **Real-Time Dashboard** — Live event feed with severity badges, confidence scores, and feature importance charts
 - **Dual Mode** — Switch between CSV data simulation and live system monitoring
-- **Live Network Monitoring** — Captures real packets via Scapy and classifies network flows in real-time
-- **Live Log Monitoring** — Tails system logs (/var/log/auth.log, syslog, journalctl) for real-time anomaly detection
+- **Live Network Monitoring** — Captures real packets via Scapy, aggregates into flows, extracts 52 CICIDS2017 features, and classifies with MLP
+- **Live Log Monitoring** — Tails system logs (auth.log, syslog, journalctl) with rolling 100-line windows for CNN-LSTM classification
+- **Hybrid Correlation Engine** — Correlates network alerts and log alerts within 60s time windows based on host/IP and attack type compatibility
+- **Historical Incident Storage** — SQLite database with KNN cosine similarity search for similar past incidents
+- **Async Explanations** — SHAP/LIME computed in background threads without blocking real-time monitoring
+- **Controlled Test Scenarios** — Pre-built scripts for brute force, port scan, and high-rate traffic testing
 
 ## Tech Stack
 
@@ -45,10 +49,15 @@ Data Sources          Detection Modules        Explainability        Dashboard
 ```
 hybrid-ids-dashboard/
 ├── backend/
-│   ├── main.py                 # FastAPI + Socket.IO server
-│   ├── inference.py            # Model loading & prediction engine
-│   ├── live_network_monitor.py # Scapy-based live packet capture
-│   ├── live_log_monitor.py     # Live system log monitoring
+│   ├── main.py                 # FastAPI + Socket.IO server (full integration)
+│   ├── inference.py            # Model loading & prediction wrappers
+│   ├── feature_extractor.py    # Packet → 52 CICIDS2017 features
+│   ├── live_network_monitor.py # Scapy capture → flow → features → MLP
+│   ├── live_log_monitor.py     # Log tailing → rolling window → CNN-LSTM
+│   ├── correlation.py          # Hybrid correlation engine (time+host+type)
+│   ├── explainer.py            # Async SHAP/LIME background worker
+│   ├── incident_store.py       # SQLite storage + KNN similarity search
+│   ├── test_scenarios/         # Controlled attack test scripts
 │   ├── requirements.txt        # Python dependencies
 │   └── models/                 # Trained model files (.pkl, .h5)
 ├── frontend/
@@ -144,6 +153,45 @@ Then click **"Live Monitor"** button in the dashboard header.
 |------|-------------|
 | **CSV Data** | Streams events from CICIDS2017 and BGL datasets through the trained models. Good for demonstration. |
 | **Live Monitor** | Captures real network packets (Scapy) and tails system logs in real-time. Requires root/sudo access. |
+
+## Real-Time Pipeline
+
+```
+LIVE EVENT (packet or log line)
+    ↓
+CAPTURE (Scapy sniffer / log tailer)
+    ↓
+PROCESS (flow aggregation / rolling window)
+    ↓
+FEATURES (52 CICIDS2017 features / 100-token sequence)
+    ↓
+PREPROCESSING (StandardScaler / Tokenizer + pad_sequences)
+    ↓
+TRAINED MODEL (MLP / CNN-LSTM)
+    ↓
+DETECTION (attack type / anomaly score)
+    ↓
+CORRELATION (time window + host + attack type matching)
+    ↓
+EXPLANATION (SHAP / LIME in background thread)
+    ↓
+INCIDENT STORED (SQLite + similar incidents retrieved)
+    ↓
+DASHBOARD ALERT (WebSocket → React auto-update)
+```
+
+## Test Scenarios
+
+```bash
+# Brute force login simulation
+bash backend/test_scenarios/brute_force.sh
+
+# Port scanning simulation
+bash backend/test_scenarios/port_scan.sh
+
+# High-rate network activity
+bash backend/test_scenarios/high_rate.sh
+```
 
 ## Model Performance
 
